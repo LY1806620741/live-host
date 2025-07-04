@@ -63,8 +63,8 @@ export class HostTreeDataProvider implements vscode.TreeDataProvider<HostConfig>
         vscode.window.showInformationMessage('This host is choosed areadly!')
       } else {
         metaInfo.cur.push(item.label)
-        FileUtil.setMetaInfo(this.userRoot, metaInfo)
         FileUtil.syncChooseHost(this.userRoot)
+        FileUtil.setMetaInfo(this.userRoot, metaInfo)
         this._onDidChangeTreeData.fire(null)
         vscode.window.showInformationMessage('This host is choosed areadly!')
       }
@@ -79,8 +79,8 @@ export class HostTreeDataProvider implements vscode.TreeDataProvider<HostConfig>
       let labelIndex = metaInfo.cur.indexOf(item.label)
       if (labelIndex > -1) {
         metaInfo.cur.splice(labelIndex, 1)
-        FileUtil.setMetaInfo(this.userRoot, metaInfo)
         FileUtil.syncChooseHost(this.userRoot)
+        FileUtil.setMetaInfo(this.userRoot, metaInfo)
         this._onDidChangeTreeData.fire(undefined)
         vscode.window.showInformationMessage('UnChoose Host Success!')
       }
