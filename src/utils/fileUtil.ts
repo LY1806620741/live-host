@@ -9,33 +9,54 @@ export class FileUtil {
     private static readonly MAC_HOST_PATH: string = "/etc/hosts";
     private static readonly META_FILE_NAME: string = "meta.json";
 
+    /** 改进的路径转义 */
+    public static escapePath(p: string): string {
+        return p
+            .replace(/"/g, '\\"');
+    }
+
     public static elevatedWriteFileSync(filePath, content) {
         try {
             // 先尝试普通写入
             fs.writeFileSync(filePath, content);
         } catch (err) {
-            if (err.code === 'EPERM') {
-                // 无权限时自动触发提权流程
-                const tempFile = path.join(os.tmpdir(), `temp-${Date.now()}`);
-                fs.writeFileSync(tempFile, content);
+            // 无权限时自动触发提权流程
+            const tempFile = path.join(os.tmpdir(), `vscode-liveHost-temp-${Date.now()}.tmp`);
+            fs.writeFileSync(tempFile, content);
 
-                try {
-                    if (os.platform() === 'win32') {
-                        // Windows: 通过PowerShell提权
+            try {
+                // TODO: 因为本人在win平台，只测了这个平台，如果其他平台有问题，可以自行测试修复。
+                switch (os.platform()) {
+                    case 'win32':
+                        // Windows 完全静默方案, 什么傻逼cmd + powershell 混用，冒号规则变来变去
                         execSync(
-                            `powershell -Command "Start-Process -Verb RunAs -FilePath 'cmd.exe' -ArgumentList '/c','copy','${tempFile}','${filePath}'"`,
-                            { stdio: 'inherit' }
+                            //shell下运行要加' `powershell -WindowStyle Hidden -Command {Start-Process -Verb RunAs -WindowStyle Hidden -FilePath 'powershell' -ArgumentList '-Command', 'copy \\\"${tempFile}\\\" \\\"${filePath}\\\"'}`',
+                            `powershell -WindowStyle Hidden -Command Start-Process -Verb RunAs -WindowStyle Hidden -FilePath 'powershell' -ArgumentList '-Command', 'copy \\\"${tempFile.replace(/\\/g, '\\\\')}\\\" \\\"${filePath.replace(/\\/g, '\\\\')}\\\"'`,
+                            // { stdio: 'ignore' }
                         );
-                    } else {
-                        // macOS/Linux: 通过sudo提权
-                        execSync(`sudo cp ${tempFile} ${filePath}`, { stdio: 'inherit' });
-                    }
-                    fs.unlinkSync(tempFile); // 清理临时文件
-                } catch (sudoErr) {
-                    throw new Error(`提权失败: ${sudoErr.message}`);
+                        break;
+
+                    case 'darwin':
+                        // macOS 使用 osascript 显示图形化提权
+                        execSync(
+                            `osascript -e "do shell script \\"cp ${tempFile} ${filePath}\\" with administrator privileges"`,
+                            { stdio: 'ignore' }
+                        );
+                        break;
+
+                    case 'linux':
+                        // Linux 使用 pkexec 图形化提权
+                        execSync(
+                            `pkexec cp ${tempFile} ${filePath}`,
+                            { stdio: 'ignore' }
+                        );
+                        break;
+
+                    default:
+                        throw new Error('Unsupported platform');
                 }
-            } else {
-                throw err; // 其他错误直接抛出
+            } catch (sudoErr) {
+                throw new Error(`提权失败: ${sudoErr.message}`);
             }
         }
     }
