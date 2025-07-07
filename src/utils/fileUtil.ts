@@ -9,30 +9,23 @@ export class FileUtil {
     private static readonly MAC_HOST_PATH: string = "/etc/hosts";
     private static readonly META_FILE_NAME: string = "meta.json";
 
-    /** 改进的路径转义 */
-    public static escapePath(p: string): string {
-        return p
-            .replace(/"/g, '\\"');
-    }
-
     public static elevatedWriteFileSync(filePath, content) {
         try {
             // 先尝试普通写入
             fs.writeFileSync(filePath, content);
         } catch (err) {
             // 无权限时自动触发提权流程
-            const tempFile = path.join(os.tmpdir(), `vscode-liveHost-temp-${Date.now()}.tmp`);
+            const tempFile = path.join(os.tmpdir(), `vscode-liveHost-${Date.now()}.tmp`);
             fs.writeFileSync(tempFile, content);
 
             try {
                 // TODO: 因为本人在win平台，只测了这个平台，如果其他平台有问题，可以自行测试修复。
                 switch (os.platform()) {
                     case 'win32':
-                        // Windows 完全静默方案, 什么傻逼cmd + powershell 混用，冒号规则变来变去
+                        // Windows 完全静默方案
                         execSync(
-                            //shell下运行要加' `powershell -WindowStyle Hidden -Command {Start-Process -Verb RunAs -WindowStyle Hidden -FilePath 'powershell' -ArgumentList '-Command', 'copy \\\"${tempFile}\\\" \\\"${filePath}\\\"'}`',
-                            `powershell -WindowStyle Hidden -Command Start-Process -Verb RunAs -WindowStyle Hidden -FilePath 'powershell' -ArgumentList '-Command', 'copy \\\"${tempFile.replace(/\\/g, '\\\\')}\\\" \\\"${filePath.replace(/\\/g, '\\\\')}\\\"'`,
-                            // { stdio: 'ignore' }
+                            `Start-Process -Verb RunAs -WindowStyle Hidden -FilePath 'powershell' -ArgumentList '-Command', 'copy \"${tempFile}\" \"${filePath}\"'`,
+                            { stdio: 'ignore', shell: "powershell" }
                         );
                         break;
 
@@ -57,6 +50,8 @@ export class FileUtil {
                 }
             } catch (sudoErr) {
                 throw new Error(`提权失败: ${sudoErr.message}`);
+            } finally {
+                fs.unlinkSync(tempFile);
             }
         }
     }
@@ -79,7 +74,7 @@ export class FileUtil {
     }
 
     public static createHostFile(appRoot: string, name: string) {
-        this.elevatedWriteFileSync(path.join(appRoot, '.host', `${name}.host`), `# enjoy host : ${name} \n`);
+        this.elevatedWriteFileSync(path.join(appRoot, '.host', `${name}.host`), ``);
     }
 
     public static renameHostFile(appRoot: string, oldname: string, name: string) {
@@ -126,18 +121,18 @@ export class FileUtil {
         return usefullHostFiles;
     }
 
-    public static syncChooseHost(appRoot: string): any {
+    public static syncChooseHost(appRoot: string, metaInfo = null): any {
         const osType = os.platform();
         let sysHostPath = osType.indexOf('win32') > -1 ? this.WIN32_HOST_PATH : this.MAC_HOST_PATH;
-        let data = '';
-        let metaInfo = this.getMetaInfo(appRoot);
+        let data = '# LiveHost Manage this file, do not edit it manually';
+        metaInfo = metaInfo ?? this.getMetaInfo(appRoot);
         let files = this.gethostConfigFileList(appRoot);
         if (files && files.length > 0) {
             files.forEach((file: any) => {
                 if (metaInfo.cur.indexOf(path.basename(file, '.host')) > -1) {
                     let filePath = path.join(appRoot, '.host', file);
                     let curHostData = fs.readFileSync(filePath).toString();
-                    data = data + `\n# host ${file} start\n` + curHostData + `\n# host ${file} end\n`;
+                    data = data + `\n## host ${file} start\n` + curHostData + `\n# host ${file} end\n`;
                 }
             });
         }
