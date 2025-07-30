@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { OutputChannel } from "../outputChannel";
 import { execSync } from 'child_process';
+const crypto = require('crypto');
 
 export class FileUtil {
     private static readonly WIN32_HOST_PATH: string = "C:\\Windows\\System32\\drivers\\etc\\hosts";
@@ -18,15 +19,24 @@ export class FileUtil {
             const tempFile = path.join(os.tmpdir(), `vscode-liveHost-${Date.now()}.tmp`);
             fs.writeFileSync(tempFile, content);
 
+            const hash1 = crypto.createHash('sha256').update(content).digest('hex');
+
             try {
                 // TODO: 因为本人在win平台，只测了这个平台，如果其他平台有问题，可以自行测试修复。
                 switch (os.platform()) {
                     case 'win32':
                         // Windows 完全静默方案
-                        execSync(
-                            `Start-Process -Verb RunAs -WindowStyle Hidden -FilePath 'powershell' -ArgumentList '-Command', 'copy \"${tempFile}\" \"${filePath}\"'`,
-                            { stdio: 'ignore', shell: "powershell" }
+                        const cmd = `Start-Process -Verb RunAs -WindowStyle Hidden -FilePath 'powershell' -ArgumentList '-Command', 'Copy-Item -Path \"${tempFile}\" -Destination \"${filePath}\" -Force' -Wait`;
+                        const result =  execSync(
+                            cmd,
+                            { shell: "powershell" }
                         );
+                        const hash2 = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+
+                        // OutputChannel.appendLine(`${cmd} ${result}`);
+                        if (hash1 !== hash2){
+                            throw new Error('未同步成功');
+                        }
                         break;
 
                     case 'darwin':
@@ -132,7 +142,7 @@ export class FileUtil {
                 if (metaInfo.cur.indexOf(path.basename(file, '.host')) > -1) {
                     let filePath = path.join(appRoot, '.host', file);
                     let curHostData = fs.readFileSync(filePath).toString();
-                    data = data + `\n## host ${file} start\n` + curHostData + `\n# host ${file} end\n`;
+                    data = data + `\n## host ${file} start\n` + curHostData + `\n## host ${file} end\n`;
                 }
             });
         }
